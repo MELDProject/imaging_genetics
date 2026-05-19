@@ -3,7 +3,7 @@
 usage() {
     echo 
     echo "usage: source bids2zip.sh <input_data_gene_dir> -b <yyyymmdd>"
-    echo "example: source bids2zip.sh /imagine_data/input_data/TSC_T1 -b 20260523"
+    echo "example: source bids2zip.sh /imagine_data_T1/input_data/TSC -b 20260523"
     return 1 2>/dev/null || exit 1
 }
 
@@ -49,8 +49,7 @@ if ! [[ "$BATCH_DATE" =~ ^[0-9]{8}$ ]]; then
 fi
 
 
-
-# paths
+# paths 
 INPUT_DIR=$(realpath "$INPUT_DIR")
 
 if [[ ! -d "$INPUT_DIR" ]]; then
@@ -60,16 +59,14 @@ if [[ ! -d "$INPUT_DIR" ]]; then
 fi
 
 FOLDER_NAME=$(basename "$INPUT_DIR")
-
+GENE_SITE=$(basename "$INPUT_DIR")
 GENE="${FOLDER_NAME%%_*}"
 SITE="${FOLDER_NAME#*_}"
 
 BASE_DIR=$(dirname "$(dirname "$INPUT_DIR")")
-
 ID_LIST="${INPUT_DIR}/${GENE}_id_list_${BATCH_DATE}.txt"
-BIDS_DIR="${BASE_DIR}/share_data/BIDS"
-OUTPUT_ZIP="${BASE_DIR}/share_data/imagine_data_${GENE}_${SITE}_${BATCH_DATE}.zip"
-
+BIDS_DIR="${BASE_DIR}/share_data/${GENE_SITE}/BIDS"
+OUTPUT_ZIP="${BASE_DIR}/share_data/${GENE_SITE}/imagine_data_${GENE_SITE}_${BATCH_DATE}.zip"
 TMP_DIR=$(mktemp -d)
 
 cleanup() {
