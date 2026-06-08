@@ -40,11 +40,11 @@ pt_data <- read_excel(excel_file)
 run_tracker <- list() 
 
 # Create log file
-log_file <- file.path(bids_dir, "bidsify_log.txt")
+log_file <- file.path(bids_dir, paste0("bidsify_log_", batch, ".txt"))
 cat("Pipeline started at", format(Sys.time()), "\n", file = log_file)
 
 # Create an age spreadsheet
-ages_file <- file.path(gene_path, "ages.csv")
+ages_file <- file.path(gene_path, paste0("ages_", batch, ".csv"))
 cat("Subject code, session number, age_at_scan\n", file = ages_file)
 
 
@@ -174,7 +174,7 @@ for (sub in subs) {
     age_in_days <- floor(as.numeric(p, "days"))
 
     age_format <- if (age_in_days < 100) {
-         paste0("00y00m", age_in_days, "d") 
+         paste0("00y00m", sprintf("%02dd", age_in_days))
     } else {
         sprintf("%02dy%02dm%02dd", p$year, p$month, p$day)
     } 
@@ -346,9 +346,10 @@ for (sub in subs) {
 
 bids_dirs <- list.files(bids_dir, full.names = TRUE)
 bids_dirs <- bids_dirs[file.info(bids_dirs)$isdir]
+basename_bids_dirs <- bids_dirs[basename(bids_dirs) %in% basename(subs)]
 nifti_dirs <-list.files(nifti_dir, full.names = TRUE) 
 nifti_dirs <- nifti_dirs[file.info(nifti_dirs)$isdir]
 
-cat("Bidsifying completed.", length(bids_dirs),"out of", length(subs), "subjects successfully renamed and copied to:", bids_dir, "\n")
-cat ("Subjects skipped:", skipped_subs)
+cat("Bidsifying completed.", length(basename_bids_dirs),"out of", length(subs), "subjects successfully renamed and copied to:", bids_dir, "\n")
+cat ("Subjects skipped:", skipped_subs, "\n")
 cat("Completed at:", format(Sys.time()), "\n", file = log_file, append = TRUE)
