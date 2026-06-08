@@ -15,7 +15,7 @@ input_dir="${data_dir}/DICOM"
 output_dir="${data_dir}/NIFTI"
 
 mkdir -p "${output_dir}"
-log_file="${output_dir}/dcm2niix_log.txt"
+log_file="${output_dir}/dcm2niix_log_${batch}.txt"
 echo "Started at $(date)" > "${log_file}"
 
 gene_site=$(basename "${data_dir}")
@@ -44,9 +44,11 @@ done
 
 count_inputs="${#batch_list[@]}"
 
-count_niftis=$(find "${output_dir}" -mindepth 1 -maxdepth 1 -type d -exec sh -c '
-    find "$1" -type f -name "*.nii.gz" | grep -q .
-' sh {} \; -print | wc -l)
+count_niftis=$(for sub in "${batch_list[@]}"; do
+    dir="${output_dir}/sub-${sub}"
+    [[ -d "$dir" ]] || continue
+    find "$dir" -type f -name "*.nii.gz" | grep -q . && echo 1
+done | wc -l)
 
 echo "--------------------------------"
 echo "${count_niftis} out of ${count_inputs} subjects processed successfully"
