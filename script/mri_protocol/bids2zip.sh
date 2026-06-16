@@ -64,7 +64,7 @@ GENE="${FOLDER_NAME%%_*}"
 SITE="${FOLDER_NAME#*_}"
 
 BASE_DIR=$(dirname "$(dirname "$INPUT_DIR")")
-ID_LIST="${INPUT_DIR}/${GENE}_id_list_${BATCH_DATE}.txt"
+ID_LIST="${BASE_DIR}/input_data/${GENE_SITE}/${GENE}_id_list_${BATCH_DATE}.txt"
 BIDS_DIR="${BASE_DIR}/share_data/${GENE_SITE}/BIDS"
 OUTPUT_ZIP="${BASE_DIR}/share_data/${GENE_SITE}/imagine_data_${GENE_SITE}_${BATCH_DATE}.zip"
 TMP_DIR=$(mktemp -d)
