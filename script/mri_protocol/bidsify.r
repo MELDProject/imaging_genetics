@@ -2,7 +2,7 @@ library(jsonlite)
 library(dplyr)
 library(readxl)
 library(lubridate)
-
+library(writexl)
 
 ##### Define paths #####
 args <- commandArgs(trailingOnly = TRUE)
@@ -24,12 +24,10 @@ nifti_dir <- file.path(gene_path, "NIFTI")
 bids_dir <- file.path(base_dir, "share_data", gene_site, "BIDS")
 dir.create(bids_dir, recursive = TRUE, showWarnings=FALSE)
 
-
 # Define subs as list of subject codes from batch list file, with path to nifti dir
 batch_list_file <- file.path(gene_path, paste0(gene, "_id_list_", batch, ".txt"))
 sub_list <- readLines(batch_list_file)
 subs <- file.path(nifti_dir, paste0("sub-", sub_list)) 
-
 
 # Read in spreadsheet for DOBs
 excel_filename <- paste0(gene, "_pt_identifiable_DONOTSHARE.xlsx")
@@ -40,16 +38,29 @@ pt_data <- read_excel(excel_file)
 run_tracker <- list() 
 
 # Create log file
-log_file <- file.path(bids_dir, paste0("bidsify_log_", batch, ".txt"))
+log_file <- file.path(bids_dir, paste0(gene, "_bidsify_log_", batch, ".txt"))
 cat("Pipeline started at", format(Sys.time()), "\n", file = log_file)
 
 # Create an age spreadsheet
-ages_file <- file.path(gene_path, paste0("ages_", batch, ".csv"))
-cat("Subject code, session number, age_at_scan\n", file = ages_file)
+ages_file <- file.path(gene_path, paste0(gene, "_age_", batch, ".xlsx"))
+# edit csv only if it is empty; if it is filled in, then read it
+file_is_new <- !file.exists(ages_file) || nrow(read_excel(ages_file)) == 0
+ages_df <- if (file_is_new) {
+  data.frame(
+    scan = character(),
+    subject_code = character(),
+    session_number = character(),
+    age_at_scan = character(),
+    stringsAsFactors = FALSE
+  )
+} else {
+  read_excel(ages_file)
+}
 
 
-# Quick check that all selected subs' niftis have (1) corresponding json, (2) date in nifti file name; if not, stop and print error
+# CHECKS: all selected subs' niftis have (1) corresponding json, (2) date in nifti file name where needed
 skipped_subs <- c()
+
 nii_files <- unlist(lapply(
   subs,
   list.files,
@@ -61,44 +72,39 @@ json_files <- sub("\\.nii\\.gz$", ".json", nii_files)
 has_14_digits <- grepl("\\d{14}", basename(nii_files))
 
 missing_json <- nii_files[!file.exists(json_files)]
-missing_date <- nii_files[!has_14_digits]
-
 if (length(missing_json) > 0) {
-  stop(
+  warning(
     paste(
       "Missing JSON for: \n",
       paste(basename(missing_json), collapse = "\n"),
-      "\nPlease ensure every scan has a corresponding json before running this script."
-    )
-  )
-}
-if (length(missing_date) > 0) {
-  stop(
-    paste(
-      "Missing date (14-digit number) for: \n",
-      paste(basename(missing_date), collapse = "\n"),
-      "\nPlease ensure every scan has a date (14-digit number) in the file name before running this script."
+      "\nProceeding without JSON for these files; information may be inaccurate."
     )
   )
 }
 
+if (file_is_new) {
+  missing_date <- nii_files[!has_14_digits]
+  if (length(missing_date) > 0) {
+    stop(
+      paste(
+        "Missing date (14-digit number) for: \n",
+        paste(basename(missing_date), collapse = "\n"),
+        "\nPlease ensure every scan has a date (14-digit number) in the file name before running this script."
+      )
+    )
+  }
+}
 
 
 ##### Loop over dirs for each sub #####
 for (sub in subs) {
+  
   subname <- basename(sub)
   cat("Processing:", subname, "\n")
   cat(subname, ": START\n", file = log_file, append = TRUE)
-
   subcode <- sub("^sub-", "", subname)
-  if (!subcode %in% pt_data$subject_code) {
-    cat(subname, ": Skipped - not found in spreadsheet.\n")
-    cat(subname, ": SKIP - NOT IN SPREADSHEET\n", file = log_file, append = TRUE)
-    skipped_subs <- c(skipped_subs, subname)
-    next 
-  }
- 
-  nifti_files <- list.files(sub, pattern="\\.nii\\.gz$", full.names = TRUE) # define as .nii files (does NOT include jsons)
+
+  nifti_files <- list.files(sub, pattern="\\.nii\\.gz$", full.names = TRUE) # define as .nii files 
   if (length(nifti_files) == 0) {
     cat(subname, ": NO FILES\n", file = log_file, append = TRUE)
     skipped_subs <- c(skipped_subs, subname)
@@ -121,13 +127,21 @@ for (sub in subs) {
 
   
   ### Set up date-session mapping ### 
-  dates <- sapply(nifti_files, function(f) {
-    fname <- basename(f)
-    num_part <- regmatches(fname, gregexpr("\\d{14}", fname))[[1]][1]
-    substr(num_part, 1, 8)
-  })
-  unique_dates <- sort(unique(dates))   # unique dates sorted chronologically
-  ses_lookup <- setNames(seq_along(unique_dates), unique_dates)   # for each sub, map dates to a session code
+  if (file_is_new) {
+    if (!subcode %in% pt_data$subject_code) {
+      cat(subname, ": Skipped - not found in spreadsheet: pt_identifiable_DONOTSHARE.xlsx\n")
+      cat(subname, ": SKIP - NOT IN SPREADSHEET\n", file = log_file, append = TRUE)
+      skipped_subs <- c(skipped_subs, subname)
+      next 
+    }
+    dates <- sapply(nifti_files, function(f) {
+      fname <- basename(f)
+      num_part <- regmatches(fname, gregexpr("\\d{14}", fname))[[1]][1]
+      substr(num_part, 1, 8)
+    })
+    unique_dates <- sort(unique(dates))   # unique dates sorted chronologically
+    ses_lookup <- setNames(seq_along(unique_dates), unique_dates)   # for each sub, map dates to a session code
+  } else ""
 
 
   ### Loop over each .nii file per sub dir ###
@@ -154,38 +168,38 @@ for (sub in subs) {
     }
 
     ######## EXTRACT SESSION (based on corresponding date) #############
+    if (file_is_new) { # if using our dicom to nifti to bids
+      num_part <- regmatches(filename_lower, gregexpr("\\d{14}", filename_lower))[[1]]
+      if (length(num_part) == 0) {
+        stop("No date found in filename: ", filename_lower)
+        }
+      date <- substr(num_part,1,8) #first 8 numbers of num_part is the date
+      ses_code <- sprintf("%02d", ses_lookup[[date]]) # find the session code corresponding to date
+      #cat("ses:", ses_code, "date:", date, "\n") # date corresponds with a session (ex. ses-01)
 
-    num_part <- regmatches(filename_lower, gregexpr("\\d{14}", filename_lower))[[1]]
-    if (length(num_part) == 0) {
-      stop("No date found in filename: ", filename_lower)
+      # read in DOB from spreadsheet and calculate age at scan date; format as -XXyXXmXXd
+      row <- pt_data[pt_data$subject_code == subcode, ]
+      dob_string <- row$date_of_birth[1]
+      dob <- as.Date(dob_string, format = "%Y-%m-%d")
+      if (is.na(dob)) {
+        stop(paste("No matching ID found for", subname))
       }
-    date <- substr(num_part,1,8) #first 8 numbers of num_part is the date
-    ses_code <- sprintf("%02d", ses_lookup[[date]]) # find the session code corresponding to date
-    cat("ses:", ses_code, "date:", date, "\n") # date corresponds with a session (ex. ses-01)
+      scan_date <- as.Date(date, format = "%Y%m%d")
+      age <- interval(dob, scan_date)
+      p <- as.period(age)
+      age_in_days <- floor(as.numeric(p, "days"))
+      age_ymd <- if (age_in_days < 100) {
+           paste0("00y00m", sprintf("%02dd", age_in_days))
+      } else {
+          sprintf("%02dy%02dm%02dd", p$year, p$month, p$day)
+      } 
 
-    # read in DOB from spreadsheet and calculate age at scan date; format as -XXyXXmXXd
-    row <- pt_data[pt_data$subject_code == subcode, ]
-    dob_string <- row$date_of_birth[1]
-    dob <- as.Date(dob_string, format = "%Y-%m-%d")
-    scan_date <- as.Date(date, format = "%Y%m%d")
-
-    age <- interval(dob, scan_date)
-    p <- as.period(age)
-    age_in_days <- floor(as.numeric(p, "days"))
-
-    age_format <- if (age_in_days < 100) {
-         paste0("00y00m", sprintf("%02dd", age_in_days))
-    } else {
-        sprintf("%02dy%02dm%02dd", p$year, p$month, p$day)
-    } 
-        
-    cat(subcode, ",", ses_code, ",", age_format, "\n", file = ages_file, append = TRUE) # add age at scan to age spreadsheet
-
-    age_format <- paste0("-", age_format)
-
-
-    if (is.na(dob)) {
-      stop(paste("No matching ID found for", subname))
+    } else { # if an existing age_<batch>.csv is provided 
+      match_row <- ages_df[trimws(ages_df$scan)==filename,]
+      if (nrow(match_row) == 0) {
+        stop("No matching scan file found in ages_file for: ", filename)
+      }
+      ses_code <- sprintf("%02d", as.numeric(trimws(as.character(match_row$session_number[1]))))
     }
 
 
@@ -264,7 +278,6 @@ for (sub in subs) {
     ce_term <- ""
     if (nzchar(acq) || nzchar(plane)) {  # if any of these terms exist, then add to acq_term
       acq_term <- paste0("_acq", acq, plane) }
-
     if (nzchar(ce)) {  
       ce_term <- paste0("_ce", ce) }
     
@@ -282,7 +295,7 @@ for (sub in subs) {
     # Set base name as name so far WITHOUT run and ext
     base_name <- paste0(
       subname, "_",
-      "ses-", ses_code, age_format,
+      "ses-", ses_code, #age_format,
       acq_term, ce_term, "_", 
       suffix
       )
@@ -301,7 +314,7 @@ for (sub in subs) {
     ##### Stitch together the new file name ######
     new_name <- paste0(
       subname, "_",
-      "ses-", ses_code, age_format,
+      "ses-", ses_code, #age_format,
       acq_term, ce_term,
       "_run-", run,
       "_", suffix, 
@@ -310,19 +323,37 @@ for (sub in subs) {
 
     # Making the new directory paths
     anat_dir <- file.path(
-      bids_dir, subname, paste0("ses-", ses_code, age_format), "anat") 
+      bids_dir, subname, paste0("ses-", ses_code), "anat") 
     dir.create(anat_dir, recursive = TRUE, showWarnings=FALSE) #create dirs to anat for each ses
       
     new_path <- file.path(anat_dir, new_name)
+
 
     # Prevent duplication if rerunning script
     if (file.exists(new_path)) {
       cat("File path already exists. Skipping:", new_name, "\n") 
       next
     }
-  
 
-    # Print the old and new file names; try this out first before actually renaming if testing
+    # add row to ages.csv
+    if (file_is_new) {
+      #cat(new_name, ",", subcode, ",", ses_code, ",", age_ymd, "\n", file = ages_file, append = TRUE)
+      new_row <- data.frame(
+      scan = new_name,
+      subject_code = subcode,
+      session_number = ses_code,
+      age_at_scan = age_ymd,
+      stringsAsFactors = FALSE
+      )
+      ages_df <- rbind(ages_df, new_row)
+    } else { # if it already exists, replace scan name with new name
+      match_scan <- which(trimws(as.character(ages_df$scan)) == filename)
+      ages_df$scan[match_scan[1]] <- new_name
+  }
+    
+
+
+    # Print the old and new file names
     cat("OLD:", file, "\n")
     cat("NEW:", new_path, "\n\n") 
     cat("  ", basename(new_path), "\n", file = log_file, append = TRUE)
@@ -335,13 +366,20 @@ for (sub in subs) {
     )
 
     ### RENAME JSONS according to corresponding nifti names: if json_file exists (as defined in beginning of loop), replace .nii.gz with .json ###
-    if (file.exists(json_file)) { n 
+    if (file.exists(json_file)) { 
       json_new_name <- sub("\\.nii\\.gz$", ".json", new_name)
       json_new_path <- file.path(anat_dir, json_new_name)
       file.copy(from = json_file, to = json_new_path)
     }
   }
   cat(subname, ": DONE\n", file = log_file, append = TRUE)
+}
+
+write_xlsx(ages_df, ages_file) # create ages spreadsheet if empty, and replace scan file names
+final_ages_path <- file.path(bids_dir, paste0(gene, "_age_", batch, ".xlsx"))
+copy_success <- file.copy(ages_file, final_ages_path, overwrite = TRUE)
+if (!copy_success) {
+  warning("Failed to copy age spreadsheet to BIDS folder: ", final_ages_path, ". Please manually copy it over before the next step.")
 }
 
 bids_dirs <- list.files(bids_dir, full.names = TRUE)

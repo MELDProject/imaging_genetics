@@ -9,3 +9,4 @@ dependencies:
   - r-jsonlite=2.0.0
   - r-readxl
   - r-lubridate
+  - r-writexl
