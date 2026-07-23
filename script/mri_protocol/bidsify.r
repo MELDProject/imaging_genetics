@@ -264,8 +264,10 @@ for (sub in subs) {
                 plane <- "-sag2d"
               } else {
                 plane <- "-2d"}    
-          } else {
-            plane <- ""}
+      } else if (grepl("3d", acq_type)) {
+        plane <- "-3d"
+      } else {
+          plane <- ""}
     
       # add contrast tag if there is contrast
       if (grepl("gadolinium|gad|contrast", contrast)) {
