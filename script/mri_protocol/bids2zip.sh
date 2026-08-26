@@ -65,6 +65,7 @@ SITE="${FOLDER_NAME#*_}"
 
 BASE_DIR=$(dirname "$(dirname "$INPUT_DIR")")
 ID_LIST="${BASE_DIR}/input_data/${GENE_SITE}/${GENE}_id_list_${BATCH_DATE}.txt"
+AGE_LIST="${BASE_DIR}/input_data/${GENE_SITE}/${GENE}_age_${BATCH_DATE}.xlsx"
 BIDS_DIR="${BASE_DIR}/share_data/${GENE_SITE}/BIDS"
 OUTPUT_ZIP="${BASE_DIR}/share_data/${GENE_SITE}/imagine_data_${GENE_SITE}_${BATCH_DATE}.zip"
 TMP_DIR=$(mktemp -d)
@@ -78,6 +79,12 @@ trap cleanup EXIT
 if [[ ! -f "$ID_LIST" ]]; then
     echo "ERROR: ID list not found:"
     echo "  $ID_LIST"
+    return 1 2>/dev/null || exit 1
+fi
+
+if [[ ! -f "$AGE_LIST" ]]; then
+    echo "ERROR: Age list not found:"
+    echo "  $AGE_LIST"
     return 1 2>/dev/null || exit 1
 fi
 
@@ -98,6 +105,7 @@ echo "Gene       : $GENE"
 echo "Batch date : $BATCH_DATE"
 echo "Input dir  : $INPUT_DIR"
 echo "ID list    : $ID_LIST"
+echo "Age list   : $AGE_LIST"
 echo "BIDS dir   : $BIDS_DIR"
 echo "=================================================="
 
@@ -136,6 +144,7 @@ while IFS= read -r subject_id || [[ -n "$subject_id" ]]; do
 done < "$ID_LIST"
 
 cp "$ID_LIST" "${TMP_DIR}/"
+cp "$AGE_LIST" "${TMP_DIR}/"
 
 # create zip 
 echo
@@ -148,7 +157,9 @@ rm -f "$OUTPUT_ZIP"
 
     zip -r "$OUTPUT_ZIP" \
         "BIDS" \
-        "$(basename "$ID_LIST")"
+        "$(basename "$ID_LIST")"\
+        "$(basename "$AGE_LIST")"
+
 )
 
 echo
