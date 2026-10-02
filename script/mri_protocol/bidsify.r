@@ -217,14 +217,18 @@ for (sub in subs) {
     } else if (!is.null(json_data)) {
         series_desc <- tolower(json_data$SeriesDescription %||% "")
         study_desc <- tolower(json_data$StudyDescription %||% "")
+        image_type <- tolower(json_data$ImageType %||% "")
+        scanning_sequence <- tolower(json_data$ScanningSequence %||%"")
+        sequence_name <- tolower(json_data$SequenceName %||%"")
+        protocol_name <- tolower(json_data$ProtocolName %||%"")
 
-        meta_text <- paste(series_desc, study_desc)     # combine into one string
+        meta_text <- paste(series_desc, study_desc,image_type, scanning_sequence, sequence_name, protocol_name)     # combine into one string
 
-      if (grepl("t1|t1w", meta_text)) {
+      if (grepl("t1|t1w|mprage|mp rage|mp2rage|brain volume|tfe|IR|gre|ffe", meta_text)) {
         suffix <- "T1w"
-      } else if (grepl("flair|dark-fluid", meta_text)) {
+      } else if (grepl("flair|dark-fluid|tir", meta_text)) {
         suffix <- "FLAIR"
-      } else if (grepl("t2|t2w", meta_text)) {
+      } else if (grepl("t2|t2w|tse|fse", meta_text)) {
         suffix <- "T2w"
       } else {
         suffix <- "unknown"}
